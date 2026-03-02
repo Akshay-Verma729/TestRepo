@@ -34,9 +34,25 @@ jobs:
           sf sgd source delta --to "HEAD" --from "origin/UAT" --output changed-sources/ --generate-delta --source force-app/
           echo "[INFO] Diff generated"
 
+      - name: 'Check for changes'
+        id: check_changes
+        run: |
+          if [ -d "changed-sources/force-app" ] && [ "$(ls -A changed-sources/force-app 2>/dev/null)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "[INFO] Changes detected in force-app"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "[INFO] No changes detected in force-app"
+          fi
+
       - name: 'Validate against UAT Org (Check-Only)'
+        if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           echo "${{ secrets.JWT_SERVER_KEY }}" > server.key
           chmod 600 server.key
           sf org login jwt --username "${{ secrets.DEPLOYMENT_USER_NAME_UAT }}" --jwt-key-file server.key --client-id "${{ secrets.CONSUMER_KEY_UAT }}" --instance-url "${{ vars.INSTANCE_URL_UAT }}" --set-default
           sf project deploy start --source-dir changed-sources/force-app --test-level RunLocalTests --dry-run
+
+      - name: 'No changes to validate'
+        if: steps.check_changes.outputs.has_changes == 'false'
+        run: echo "[INFO] No force-app changes to validate. Skipping deployment."
